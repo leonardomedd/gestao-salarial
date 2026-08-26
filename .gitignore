@@ -17,6 +17,10 @@ data/
 *.db
 *.sqlite
 
+# Binários gerados
+*.apk
+*.cpgz
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

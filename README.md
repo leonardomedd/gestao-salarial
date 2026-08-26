@@ -2,9 +2,10 @@
 
 App simples e responsivo para controlar salário, receitas extras e despesas.
 
-- **Frontend:** React + TypeScript + Vite + Tailwind + shadcn/ui
+- **Frontend:** React + TypeScript + Vite + Tailwind + shadcn/ui (com dark mode)
 - **Backend:** Python (apenas biblioteca padrão — sem `pip install`)
 - **Banco:** SQLite local em `data/salario.db` — seus dados ficam no seu computador
+- **Android:** Capacitor (mesmo frontend vira APK nativo; dados no armazenamento local do app)
 
 ## Como usar
 
@@ -65,25 +66,47 @@ O projeto inclui [Capacitor](https://capacitorjs.com) — o mesmo frontend vira 
 app Android nativo. No celular **não é preciso Python**: os dados ficam no
 armazenamento local do próprio app (`src/lib/local-api.ts`).
 
-### Gerar o APK pelo GitHub (recomendado, sem instalar nada)
+### Gerar localmente (ambiente já configurado neste Mac)
 
-O workflow `.github/workflows/android-apk.yml` compila o APK automaticamente:
+O ambiente Android já está instalado nesta máquina:
 
-1. Faça push do código para o GitHub
-2. Vá em **Actions → Build APK Android → Run workflow** (ou apenas faça push na `main`)
-3. Ao terminar, baixe o artifact **gestao-salarial-apk**
-4. Envie o `.apk` para o celular e instale (permita "instalar apps de fontes desconhecidas")
+| Componente | Local |
+|---|---|
+| Android Studio | `/Applications/Android Studio.app` (via Homebrew) |
+| Android SDK 36 + build-tools + platform-tools | `~/Library/Android/sdk` |
+| JDK 21 (Temurin, sem sudo) | `~/Library/Java/jdk-21` |
 
-### Gerar localmente (precisa do Android Studio instalado)
+Para compilar o APK **sem abrir o Android Studio**:
 
 ```bash
-npm run build
-npx cap sync android
-npx cap open android   # abre no Android Studio → Build > Build APK
+npm run build && npx cap sync android
+cd android && JAVA_HOME="$HOME/Library/Java/jdk-21/Contents/Home" ./gradlew assembleDebug
 ```
+
+O APK sai em `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+⚠️ **Use sempre o JDK 21** (`~/Library/Java/jdk-21`). O Java 25 embutido no
+Android Studio (JBR) é novo demais para o Gradle 8.14 e falha com
+`Unsupported class file major version 69`.
+
+Se preferir a interface gráfica: `npx cap open android` → *Build > Build APK*.
+
+### Gerar o APK pelo GitHub Actions
+
+O workflow `.github/workflows/android-apk.yml` compila o APK na nuvem a cada
+push na `main` (ou manualmente em **Actions → Build APK Android → Run workflow**);
+o APK fica disponível como artifact **gestao-salarial-apk** por 30 dias.
+
+⚠️ Em 26/08/2026 o workflow não rodou porque a conta GitHub estava bloqueada
+por pendência de cobrança (*"account is locked due to a billing issue"*).
+Se acontecer de novo, regularize em
+[github.com/settings/billing](https://github.com/settings/billing) e use
+**Re-run** na aba Actions. A compilação local acima não depende disso.
 
 ### Observações
 
+- **Instalação no celular:** envie o `.apk` para o Android (cabo, Drive, WhatsApp,
+  e-mail) e toque nele — autorize "instalar apps de fontes desconhecidas" quando pedido.
 - O APK gerado em modo debug já funciona para uso pessoal. Para publicar na
   Play Store seria preciso assinar com uma keystore própria.
 - Os dados do celular e do computador são **independentes** (não há sincronização

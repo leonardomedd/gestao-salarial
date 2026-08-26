@@ -57,6 +57,18 @@ export const localApi = {
     return { ok: true };
   },
 
+  async updateTransaction(
+    id: number,
+    patch: Partial<NewTransaction>
+  ): Promise<{ ok: boolean }> {
+    const txs = readTxs();
+    const i = txs.findIndex((t) => t.id === id);
+    if (i === -1) throw new Error("lançamento não encontrado");
+    txs[i] = { ...txs[i], ...patch, id };
+    writeTxs(txs);
+    return { ok: true };
+  },
+
   async setSalary(amount: number): Promise<{ salary: number }> {
     localStorage.setItem(SALARY_KEY, String(amount));
     return { salary: amount };

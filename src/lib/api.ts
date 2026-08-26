@@ -55,6 +55,11 @@ const httpApi = {
     }),
   deleteTransaction: (id: number) =>
     request<{ ok: boolean }>(`/api/transaction/${id}`, { method: "DELETE" }),
+  updateTransaction: (id: number, patch: Partial<NewTransaction>) =>
+    request<{ ok: boolean }>(`/api/transaction/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
   setSalary: (amount: number) =>
     request<{ salary: number }>("/api/salary", {
       method: "POST",

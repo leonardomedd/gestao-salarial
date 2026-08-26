@@ -18,7 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { api, type Categories, type NewTransaction } from "@/lib/api";
+import {
+  api,
+  type Categories,
+  type NewTransaction,
+  type Transaction,
+} from "@/lib/api";
 import { parseBRL, todayISO } from "@/lib/format";
 
 const EXPENSE_CATEGORIES = [
@@ -37,10 +42,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   month: string; // mês visível na tela (para datas padrão)
+  editing?: Transaction | null; // quando definido, o dialog edita este lançamento
   onSaved: () => void;
 }
 
-export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props) {
+export function TransactionDialog({ open, onOpenChange, month, editing, onSaved }: Props) {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0]);
@@ -58,24 +64,41 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
 
   useEffect(() => {
     if (open) {
-      setType("expense");
-      setDescription("");
-      setCategory(EXPENSE_CATEGORIES[0]);
-      setAmountText("");
-      // data padrão: hoje se for o mês atual, senão dia 1 do mês selecionado
-      const today = todayISO();
-      setDate(today.startsWith(month) ? today : `${month}-01`);
-      setRecurring(false);
+      if (editing) {
+        // modo edição: pré-preenche com o lançamento existente
+        setType(editing.type);
+        setDescription(editing.description);
+        setCategory(editing.category);
+        setAmountText((editing.amount / 100).toFixed(2).replace(".", ","));
+        setDate(editing.date);
+        setRecurring(editing.recurring);
+      } else {
+        setType("expense");
+        setDescription("");
+        setCategory(EXPENSE_CATEGORIES[0]);
+        setAmountText("");
+        // data padrão: hoje se for o mês atual, senão dia 1 do mês selecionado
+        const today = todayISO();
+        setDate(today.startsWith(month) ? today : `${month}-01`);
+        setRecurring(false);
+      }
       setError("");
       setCreatingCategory(false);
       setNewCategoryName("");
       setCategoryError("");
       api.getCategories().then(setCustom).catch(() => {});
     }
-  }, [open, month]);
+  }, [open, month, editing]);
 
   const defaults = type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-  const categories = [...defaults, ...custom[type]];
+  // garante que a categoria do item editado apareça mesmo se for custom antiga
+  const categories = [
+    ...defaults,
+    ...custom[type],
+    ...(category && !defaults.includes(category) && !custom[type].includes(category)
+      ? [category]
+      : []),
+  ];
 
   function changeType(t: "income" | "expense") {
     setType(t);
@@ -87,9 +110,7 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
   async function addCategory() {
     const name = newCategoryName.trim();
     if (!name) return setCategoryError("Digite o nome da categoria.");
-    if (
-      categories.some((c) => c.toLowerCase() === name.toLowerCase())
-    )
+    if (categories.some((c) => c.toLowerCase() === name.toLowerCase()))
       return setCategoryError("Essa categoria já existe.");
     setCategoryError("");
     try {
@@ -119,7 +140,11 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
       recurring,
     };
     try {
-      await api.addTransaction(tx);
+      if (editing) {
+        await api.updateTransaction(editing.id, tx);
+      } else {
+        await api.addTransaction(tx);
+      }
       onOpenChange(false);
       onSaved();
     } catch (e) {
@@ -133,7 +158,9 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Novo lançamento</DialogTitle>
+          <DialogTitle>
+            {editing ? "Editar lançamento" : "Novo lançamento"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-2">
@@ -259,12 +286,19 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
             <Switch checked={recurring} onCheckedChange={setRecurring} />
           </div>
 
+          {editing?.recurring && (
+            <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+              Atenção: este lançamento se repete todo mês — a edição vale para
+              todos os meses, passados e futuros.
+            </p>
+          )}
+
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         </div>
 
         <DialogFooter>
           <Button onClick={save} disabled={saving} className="w-full sm:w-auto">
-            {saving ? "Salvando…" : "Salvar"}
+            {saving ? "Salvando…" : editing ? "Salvar alterações" : "Salvar"}
           </Button>
         </DialogFooter>
       </DialogContent>

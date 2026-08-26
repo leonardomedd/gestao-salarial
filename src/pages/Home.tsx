@@ -41,6 +41,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [txDialogOpen, setTxDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const [salaryDialogOpen, setSalaryDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -93,6 +94,11 @@ export default function Home() {
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao excluir.");
     }
+  }
+
+  function openEdit(tx: Transaction) {
+    setEditing(tx);
+    setTxDialogOpen(true);
   }
 
   return (
@@ -307,6 +313,13 @@ export default function Home() {
                         {formatBRL(t.amount)}
                       </p>
                       <button
+                        onClick={() => openEdit(t)}
+                        className="text-slate-300 transition-colors hover:text-emerald-600 dark:text-slate-600 dark:hover:text-emerald-400"
+                        aria-label={`Editar ${t.description}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => remove(t)}
                         className="text-slate-300 transition-colors hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400"
                         aria-label={`Excluir ${t.description}`}
@@ -375,8 +388,12 @@ export default function Home() {
 
       <TransactionDialog
         open={txDialogOpen}
-        onOpenChange={setTxDialogOpen}
+        onOpenChange={(open) => {
+          setTxDialogOpen(open);
+          if (!open) setEditing(null);
+        }}
         month={month}
+        editing={editing}
         onSaved={load}
       />
       <SalaryDialog

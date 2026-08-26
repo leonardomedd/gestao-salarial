@@ -45,9 +45,16 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount      INTEGER NOT NULL CHECK (amount > 0),  -- centavos
     date        TEXT NOT NULL,                        -- YYYY-MM-DD
     recurring   INTEGER NOT NULL DEFAULT 0,           -- 1 = repete todo mês
+    installments INTEGER NOT NULL DEFAULT 1,          -- nº de parcelas (1 = à vista)
     created_at  INTEGER NOT NULL
 );
 """
+
+
+def month_index(ym: str) -> int:
+    """Índice absoluto de um mês YYYY-MM (para cálculo de parcelas)."""
+    y, m = ym.split("-")
+    return int(y) * 12 + int(m)
 
 
 def get_db() -> sqlite3.Connection:
@@ -55,6 +62,13 @@ def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # migração: coluna installments em bancos criados antes desta versão
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)")]
+    if "installments" not in cols:
+        conn.execute(
+            "ALTER TABLE transactions ADD COLUMN installments INTEGER NOT NULL DEFAULT 1"
+        )
+        conn.commit()
     return conn
 
 
@@ -67,6 +81,7 @@ def row_to_dict(r: sqlite3.Row) -> dict:
         "amount": r["amount"],
         "date": r["date"],
         "recurring": bool(r["recurring"]),
+        "installments": r["installments"],
     }
 
 
@@ -118,6 +133,17 @@ def validate_tx(data: dict, partial: bool = False) -> dict:
         out["recurring"] = 1 if data["recurring"] else 0
     elif not partial:
         out["recurring"] = 0
+    if not partial or "installments" in data:
+        try:
+            installments = int(data.get("installments", 1) or 1)
+        except (TypeError, ValueError):
+            raise ValueError("installments deve ser inteiro")
+        if not 1 <= installments <= 99:
+            raise ValueError("installments deve ser entre 1 e 99")
+        out["installments"] = installments
+        # parcelado não pode ser recorrente ao mesmo tempo
+        if installments > 1 and out.get("recurring"):
+            out["recurring"] = 0
     return out
 
 
@@ -174,18 +200,29 @@ class Handler(BaseHTTPRequestHandler):
             salary = conn.execute(
                 "SELECT value FROM settings WHERE key='salary'"
             ).fetchone()
-            # lançamentos do mês + recorrentes iniciados até este mês
+            # lançamentos do mês + recorrentes + parcelas vigentes neste mês
             rows = conn.execute(
                 """
                 SELECT * FROM transactions
-                WHERE (recurring = 0 AND substr(date,1,7) = ?)
-                   OR (recurring = 1 AND substr(date,1,7) <= ?)
+                WHERE substr(date,1,7) <= ?
+                  AND (
+                    recurring = 1
+                    OR (installments > 1 AND
+                        ? < strftime('%Y-%m', date, '+' || installments || ' months'))
+                    OR substr(date,1,7) = ?
+                  )
                 ORDER BY date DESC, id DESC
                 """,
-                (month, month),
+                (month, month, month),
             ).fetchall()
             txs = [row_to_dict(r) for r in rows]
             conn.close()
+            # número da parcela vigente neste mês (ex.: 3 de 6)
+            for t in txs:
+                if t["installments"] > 1:
+                    t["installment_current"] = (
+                        month_index(month) - month_index(t["date"][:7]) + 1
+                    )
             return self._send_json({
                 "month": month,
                 "salary": int(salary["value"]) if salary else 0,
@@ -233,10 +270,10 @@ class Handler(BaseHTTPRequestHandler):
             conn = get_db()
             cur = conn.execute(
                 """INSERT INTO transactions
-                   (type, description, category, amount, date, recurring, created_at)
-                   VALUES (?,?,?,?,?,?,?)""",
+                   (type, description, category, amount, date, recurring, installments, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
                 (tx["type"], tx["description"], tx["category"], tx["amount"],
-                 tx["date"], tx["recurring"], int(time.time())),
+                 tx["date"], tx["recurring"], tx["installments"], int(time.time())),
             )
             conn.commit()
             new_id = cur.lastrowid

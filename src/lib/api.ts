@@ -9,9 +9,11 @@ export interface Transaction {
   type: "income" | "expense";
   description: string;
   category: string;
-  amount: number; // centavos
+  amount: number; // centavos (valor da parcela, quando parcelado)
   date: string; // YYYY-MM-DD
   recurring: boolean;
+  installments: number; // nº total de parcelas (1 = à vista)
+  installment_current?: number; // parcela vigente no mês consultado (ex.: 3 de 6)
 }
 
 export interface MonthData {
@@ -27,6 +29,7 @@ export interface NewTransaction {
   amount: number; // centavos
   date: string;
   recurring: boolean;
+  installments?: number; // padrão 1 (à vista)
 }
 
 export type CategoryType = "income" | "expense";

@@ -296,6 +296,14 @@ export default function Home() {
                               mensal
                             </Badge>
                           )}
+                          {(t.installments ?? 1) > 1 && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-2 px-1.5 py-0 text-[10px]"
+                            >
+                              {t.installment_current ?? "?"}/{t.installments}
+                            </Badge>
+                          )}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {t.category} ·{" "}

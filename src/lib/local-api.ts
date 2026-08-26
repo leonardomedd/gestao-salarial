@@ -19,6 +19,11 @@ interface StoredTx extends Omit<Transaction, "recurring"> {
   recurring: boolean;
 }
 
+function monthIdx(ym: string): number {
+  const [y, m] = ym.split("-").map(Number);
+  return y * 12 + m;
+}
+
 function readTxs(): StoredTx[] {
   try {
     return JSON.parse(localStorage.getItem(TX_KEY) || "[]");
@@ -34,12 +39,21 @@ function writeTxs(txs: StoredTx[]) {
 export const localApi = {
   async getMonth(month: string): Promise<MonthData> {
     const txs = readTxs()
-      .filter(
-        (t) =>
-          (t.recurring && t.date.slice(0, 7) <= month) ||
-          (!t.recurring && t.date.slice(0, 7) === month)
-      )
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id));
+      .filter((t) => {
+        const start = t.date.slice(0, 7);
+        if (monthIdx(start) > monthIdx(month)) return false;
+        if (t.recurring) return true;
+        const n = t.installments ?? 1;
+        if (n > 1) return monthIdx(month) < monthIdx(start) + n;
+        return start === month;
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id))
+      .map((t) => {
+        const n = t.installments ?? 1;
+        return n > 1
+          ? { ...t, installment_current: monthIdx(month) - monthIdx(t.date.slice(0, 7)) + 1 }
+          : t;
+      });
     const salary = Number(localStorage.getItem(SALARY_KEY) || "0");
     return { month, salary, transactions: txs };
   },
@@ -47,7 +61,10 @@ export const localApi = {
   async addTransaction(tx: NewTransaction): Promise<{ id: number }> {
     const txs = readTxs();
     const id = txs.reduce((max, t) => Math.max(max, t.id), 0) + 1;
-    txs.push({ ...tx, id });
+    const installments = tx.installments ?? 1;
+    // parcelado não pode ser recorrente ao mesmo tempo
+    const recurring = installments > 1 ? false : tx.recurring;
+    txs.push({ ...tx, id, installments, recurring });
     writeTxs(txs);
     return { id };
   },

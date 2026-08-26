@@ -24,7 +24,7 @@ import {
   type NewTransaction,
   type Transaction,
 } from "@/lib/api";
-import { parseBRL, todayISO } from "@/lib/format";
+import { formatBRL, parseBRL, todayISO } from "@/lib/format";
 
 const EXPENSE_CATEGORIES = [
   "Moradia",
@@ -53,6 +53,7 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
   const [amountText, setAmountText] = useState("");
   const [date, setDate] = useState(todayISO());
   const [recurring, setRecurring] = useState(false);
+  const [installmentsText, setInstallmentsText] = useState("1");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -72,6 +73,7 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
         setAmountText((editing.amount / 100).toFixed(2).replace(".", ","));
         setDate(editing.date);
         setRecurring(editing.recurring);
+        setInstallmentsText(String(editing.installments ?? 1));
       } else {
         setType("expense");
         setDescription("");
@@ -81,6 +83,7 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
         const today = todayISO();
         setDate(today.startsWith(month) ? today : `${month}-01`);
         setRecurring(false);
+        setInstallmentsText("1");
       }
       setError("");
       setCreatingCategory(false);
@@ -100,11 +103,17 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
       : []),
   ];
 
+  const installments =
+    type === "expense" ? Math.max(1, parseInt(installmentsText) || 1) : 1;
+  const isInstallment = installments > 1;
+  const installmentAmount = parseBRL(amountText);
+
   function changeType(t: "income" | "expense") {
     setType(t);
     setCategory(t === "expense" ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
     setCreatingCategory(false);
     setCategoryError("");
+    if (t === "income") setInstallmentsText("1"); // parcelas só em despesas
   }
 
   async function addCategory() {
@@ -129,6 +138,8 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
     if (!description.trim()) return setError("Informe uma descrição.");
     if (amount === null) return setError("Valor inválido. Ex.: 150,00");
     if (!date) return setError("Informe a data.");
+    if (installments < 1 || installments > 99)
+      return setError("Número de parcelas inválido (1 a 99).");
     setError("");
     setSaving(true);
     const tx: NewTransaction = {
@@ -137,7 +148,8 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
       category,
       amount,
       date,
-      recurring,
+      recurring: isInstallment ? false : recurring,
+      installments,
     };
     try {
       if (editing) {
@@ -194,9 +206,11 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid gap-3 ${type === "expense" ? "grid-cols-3" : "grid-cols-2"}`}>
             <div className="space-y-1.5">
-              <Label htmlFor="tx-amount">Valor (R$)</Label>
+              <Label htmlFor="tx-amount">
+                {isInstallment ? "Valor da parcela" : "Valor (R$)"}
+              </Label>
               <Input
                 id="tx-amount"
                 inputMode="decimal"
@@ -205,8 +219,22 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
                 onChange={(e) => setAmountText(e.target.value)}
               />
             </div>
+            {type === "expense" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="tx-installments">Parcelas</Label>
+                <Input
+                  id="tx-installments"
+                  inputMode="numeric"
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={installmentsText}
+                  onChange={(e) => setInstallmentsText(e.target.value)}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
-              <Label htmlFor="tx-date">Data</Label>
+              <Label htmlFor="tx-date">{isInstallment ? "1ª parcela" : "Data"}</Label>
               <Input
                 id="tx-date"
                 type="date"
@@ -215,6 +243,14 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
               />
             </div>
           </div>
+
+          {isInstallment && installmentAmount !== null && (
+            <p className="rounded-lg bg-slate-100 p-2.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {installments}x de {formatBRL(installmentAmount)} ={" "}
+              <strong>{formatBRL(installmentAmount * installments)}</strong> no
+              total. A parcela aparece todo mês até quitar.
+            </p>
+          )}
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -276,20 +312,22 @@ export function TransactionDialog({ open, onOpenChange, month, editing, onSaved 
             )}
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <p className="text-sm font-medium">Repete todo mês</p>
-              <p className="text-xs text-muted-foreground">
-                Aparece automaticamente nos meses seguintes
-              </p>
+          {!isInstallment && (
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Repete todo mês</p>
+                <p className="text-xs text-muted-foreground">
+                  Aparece automaticamente nos meses seguintes
+                </p>
+              </div>
+              <Switch checked={recurring} onCheckedChange={setRecurring} />
             </div>
-            <Switch checked={recurring} onCheckedChange={setRecurring} />
-          </div>
+          )}
 
-          {editing?.recurring && (
+          {editing && (editing.recurring || (editing.installments ?? 1) > 1) && (
             <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-              Atenção: este lançamento se repete todo mês — a edição vale para
-              todos os meses, passados e futuros.
+              Atenção: este lançamento aparece em vários meses — a edição vale
+              para todos eles, passados e futuros.
             </p>
           )}
 

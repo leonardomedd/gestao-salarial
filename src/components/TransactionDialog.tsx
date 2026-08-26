@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { api, type NewTransaction } from "@/lib/api";
+import { api, type Categories, type NewTransaction } from "@/lib/api";
 import { parseBRL, todayISO } from "@/lib/format";
 
 const EXPENSE_CATEGORIES = [
@@ -49,6 +50,12 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // categorias personalizadas
+  const [custom, setCustom] = useState<Categories>({ expense: [], income: [] });
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+
   useEffect(() => {
     if (open) {
       setType("expense");
@@ -60,14 +67,40 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
       setDate(today.startsWith(month) ? today : `${month}-01`);
       setRecurring(false);
       setError("");
+      setCreatingCategory(false);
+      setNewCategoryName("");
+      setCategoryError("");
+      api.getCategories().then(setCustom).catch(() => {});
     }
   }, [open, month]);
 
-  const categories = type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const defaults = type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const categories = [...defaults, ...custom[type]];
 
   function changeType(t: "income" | "expense") {
     setType(t);
     setCategory(t === "expense" ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
+    setCreatingCategory(false);
+    setCategoryError("");
+  }
+
+  async function addCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return setCategoryError("Digite o nome da categoria.");
+    if (
+      categories.some((c) => c.toLowerCase() === name.toLowerCase())
+    )
+      return setCategoryError("Essa categoria já existe.");
+    setCategoryError("");
+    try {
+      const updated = await api.addCategory(type, name);
+      setCustom(updated);
+      setCategory(name);
+      setCreatingCategory(false);
+      setNewCategoryName("");
+    } catch (e) {
+      setCategoryError(e instanceof Error ? e.message : "Erro ao criar categoria.");
+    }
   }
 
   async function save() {
@@ -157,19 +190,63 @@ export function TransactionDialog({ open, onOpenChange, month, onSaved }: Props)
           </div>
 
           <div className="space-y-1.5">
-            <Label>Categoria</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label>Categoria</Label>
+              {!creatingCategory && (
+                <button
+                  type="button"
+                  onClick={() => setCreatingCategory(true)}
+                  className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Nova categoria
+                </button>
+              )}
+            </div>
+
+            {creatingCategory ? (
+              <div className="space-y-1.5">
+                <div className="flex gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="Nome da nova categoria"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCategory())}
+                    maxLength={40}
+                  />
+                  <Button type="button" size="sm" onClick={addCategory}>
+                    Criar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCreatingCategory(false);
+                      setCategoryError("");
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+                {categoryError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{categoryError}</p>
+                )}
+              </div>
+            ) : (
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="flex items-center justify-between rounded-lg border p-3">

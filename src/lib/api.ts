@@ -29,6 +29,13 @@ export interface NewTransaction {
   recurring: boolean;
 }
 
+export type CategoryType = "income" | "expense";
+
+export interface Categories {
+  expense: string[];
+  income: string[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -52,6 +59,12 @@ const httpApi = {
     request<{ salary: number }>("/api/salary", {
       method: "POST",
       body: JSON.stringify({ amount }),
+    }),
+  getCategories: () => request<Categories>("/api/categories"),
+  addCategory: (type: CategoryType, name: string) =>
+    request<Categories>("/api/categories", {
+      method: "POST",
+      body: JSON.stringify({ type, name }),
     }),
 };
 

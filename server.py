@@ -70,6 +70,22 @@ def row_to_dict(r: sqlite3.Row) -> dict:
     }
 
 
+def get_custom_categories(conn: sqlite3.Connection) -> dict:
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key='custom_categories'"
+    ).fetchone()
+    if not row:
+        return {"expense": [], "income": []}
+    try:
+        data = json.loads(row["value"])
+        return {
+            "expense": list(data.get("expense", [])),
+            "income": list(data.get("income", [])),
+        }
+    except (json.JSONDecodeError, AttributeError):
+        return {"expense": [], "income": []}
+
+
 def validate_tx(data: dict, partial: bool = False) -> dict:
     """Valida e normaliza um lançamento. Lança ValueError em caso de erro."""
     out = {}
@@ -176,6 +192,12 @@ class Handler(BaseHTTPRequestHandler):
                 "transactions": txs,
             })
 
+        if path == "/api/categories":
+            conn = get_db()
+            cats = get_custom_categories(conn)
+            conn.close()
+            return self._send_json(cats)
+
         if path == "/api/export":
             conn = get_db()
             salary = conn.execute(
@@ -237,6 +259,31 @@ class Handler(BaseHTTPRequestHandler):
             conn.commit()
             conn.close()
             return self._send_json({"salary": amount})
+
+        if parsed.path == "/api/categories":
+            ctype = data.get("type")
+            name = str(data.get("name", "")).strip()
+            if ctype not in ("income", "expense"):
+                return self._error("type deve ser 'income' ou 'expense'")
+            if not name or len(name) > 40:
+                return self._error("nome obrigatório (máx. 40 caracteres)")
+            conn = get_db()
+            cats = get_custom_categories(conn)
+            if any(c.lower() == name.lower() for c in cats[ctype]):
+                conn.close()
+                return self._error("categoria já existe", 409)
+            if len(cats[ctype]) >= 50:
+                conn.close()
+                return self._error("limite de 50 categorias personalizadas", 400)
+            cats[ctype].append(name)
+            conn.execute(
+                "INSERT INTO settings (key,value) VALUES ('custom_categories',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (json.dumps(cats, ensure_ascii=False),),
+            )
+            conn.commit()
+            conn.close()
+            return self._send_json(cats, 201)
 
         self._error("rota não encontrada", 404)
 

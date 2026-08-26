@@ -3,10 +3,17 @@
 // local do próprio app (localStorage do WebView), seguindo a mesma
 // lógica do backend em server.py.
 
-import type { MonthData, NewTransaction, Transaction } from "./api";
+import type {
+  Categories,
+  CategoryType,
+  MonthData,
+  NewTransaction,
+  Transaction,
+} from "./api";
 
 const TX_KEY = "salario:transactions";
 const SALARY_KEY = "salario:salary";
+const CATEGORIES_KEY = "salario:categories";
 
 interface StoredTx extends Omit<Transaction, "recurring"> {
   recurring: boolean;
@@ -53,5 +60,30 @@ export const localApi = {
   async setSalary(amount: number): Promise<{ salary: number }> {
     localStorage.setItem(SALARY_KEY, String(amount));
     return { salary: amount };
+  },
+
+  async getCategories(): Promise<Categories> {
+    try {
+      const data = JSON.parse(localStorage.getItem(CATEGORIES_KEY) || "{}");
+      return {
+        expense: Array.isArray(data.expense) ? data.expense : [],
+        income: Array.isArray(data.income) ? data.income : [],
+      };
+    } catch {
+      return { expense: [], income: [] };
+    }
+  },
+
+  async addCategory(type: CategoryType, name: string): Promise<Categories> {
+    const cats = await this.getCategories();
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 40) throw new Error("Nome inválido");
+    if (cats[type].some((c) => c.toLowerCase() === trimmed.toLowerCase()))
+      throw new Error("categoria já existe");
+    if (cats[type].length >= 50)
+      throw new Error("limite de 50 categorias personalizadas");
+    cats[type].push(trimmed);
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(cats));
+    return cats;
   },
 };

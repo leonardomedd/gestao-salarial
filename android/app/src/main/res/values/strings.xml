@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Gestão de Salário</string>
+    <string name="title_activity_main">Gestão de Salário</string>
+    <string name="package_name">com.leonardomedd.gestaosalarial</string>
+    <string name="custom_url_scheme">com.leonardomedd.gestaosalarial</string>
+</resources>
